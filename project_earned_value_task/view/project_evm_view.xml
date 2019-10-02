@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<openerp>
+<odoo>
     <data>
 
         <!-- Project Earned Value Management -->
@@ -66,8 +66,7 @@
              </field>
         </record>                
 
-        <record id="action_project_evm_task_tree"
-                model="ir.actions.act_window">
+        <record id="action_project_evm_task_tree" model="ir.actions.act_window">
             <field name="name">Earned Value Records</field>
             <field name="res_model">project.evm.task</field>
             <field name="view_id" ref="view_project_evm_task_tree"/>
@@ -78,10 +77,10 @@
             <field name="context">{'search_default_kpi_type':'PV', 'search_default_kpi_type':'EV', 'search_default_kpi_type':'AC', 'search_default_evaldate':1,'search_default_kpi_type':1,'search_default_project':1, 'group_by':[], 'group_by_no_leaf':1,}</field>
         </record>
 
-        <menuitem id="menu_project_evm" name="Earned Value Management" parent="base.menu_project_report"/>
+        <menuitem id="menu_project_evm" name="Earned Value Management" parent="project.menu_project_report"/>
         <menuitem action="action_earned_value_task_graphs"
                   id="menu_action_earned_value_graphs" parent="menu_project_evm" sequence="3"/>
         <menuitem action="action_project_evm_task_tree" id="menu_project_evm_view" parent="menu_project_evm" sequence="4"/>
 
     </data>
-</openerp>
+</odoo>

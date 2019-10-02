@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Eficent (<http://www.eficent.com/>)
@@ -18,7 +17,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-from openerp import fields, models
+from odoo import fields, models
 
 _KPI_TYPE = [('PV', 'Planned Value'),
              ('EV', 'Earned Value'),
@@ -38,8 +37,8 @@ _KPI_TYPE = [('PV', 'Planned Value'),
              ('PCC', 'Costs to date / Total costs'),
              ('POC', '% Complete')]
 
-class project_evm_task(models.Model):
 
+class ProjectEvmTask(models.Model):
     _name = 'project.evm.task'
     _description = 'Project Earned Value Management indicators'
 

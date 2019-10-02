@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
-#    Copyright (C) 2015 Eficent (<http://www.eficent.com/>)
+#    Copyright (C) 2019 Eficent (<http://www.eficent.com/>)
 #              <contact@eficent.com>
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -21,28 +20,25 @@
 
 {
     "name": "Earned Value Management using tasks",
-    "version": "1.0",
+    "version": "12.0.1.0.0",
     "author": "Eficent",
-    "website": "",
+    "website": "https://github.com/Eficent/project-earned-value",
     "category": "Generic Modules/Projects & Services",
-    "depends": ["project", "hr_timesheet"],
+    "depends": [
+        "project_gantt", "hr_timesheet",
+    ],
     "description": """
         - 
- 
     """,
-    "init_xml": [],
-    "update_xml": [
+    "data": [
+        "security/ir.model.access.csv",
+        "data/project_data.xml",
+        "wizard/earned_value_view.xml",
         "view/project_evm_view.xml",
         "view/project_view.xml",
-        "wizard/earned_value_view.xml",
-        "data/project_data.xml",
     ],
-    'demo_xml': [
-
-    ],
-    'test':[
+    'demo': [
+        "data/project_demo_slides.xml",
     ],
     'installable': True,
-    'active': False,
-    'certificate': '',
 }

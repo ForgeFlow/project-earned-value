@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Eficent (<http://www.eficent.com/>)
@@ -19,13 +18,10 @@
 #
 ##############################################################################
 
-from openerp import models, api, exceptions, _
-from datetime import datetime
-from datetime import datetime as dt
-from dateutil.rrule import *
+from odoo import models, api, exceptions, _
+
 
 class HrEmployee(models.Model):
-    
     _inherit = "hr.employee"
 
     @api.model
@@ -33,11 +29,11 @@ class HrEmployee(models.Model):
         employee_ids = self.search([('user_id', '=', user_id)])
         if not employee_ids:
             raise exceptions.Warning(
-                _('Error!:: No employee is assigned to user.'))
+                _('Error!: No employee is assigned to user.'))
         for employee in employee_ids:
-            if not employee.product_id:
+            if not employee.timesheet_cost:
                 raise exceptions.Warning(
-                    _('Error!:: No product is assigned to employee %s.'),
+                    _('Error!: No timesheet cost is assigned to employee %s.'),
                     (employee.name,))
-            return employee.product_id.standard_price
+            return employee.timesheet_cost
 

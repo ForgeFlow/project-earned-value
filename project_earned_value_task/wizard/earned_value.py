@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2014 Eficent (<http://www.eficent.com/>)
@@ -18,9 +17,10 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-from openerp import fields, models, api, _
+from odoo import fields, models, api, _
 
-class earned_value_task_graphs(models.TransientModel):
+
+class EarnedValueTaskGraphs(models.TransientModel):
     _name = "earned.value.task.graphs"
     _description = "Earned Value Graphs"
 
@@ -46,4 +46,3 @@ class earned_value_task_graphs(models.TransientModel):
             'context': False,
             'type': 'ir.actions.act_window'
         }
-

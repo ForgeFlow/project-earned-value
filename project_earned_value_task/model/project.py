@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 ##############################################################################
 #
 #    Copyright (C) 2015 Eficent (<http://www.eficent.com/>)
@@ -19,20 +18,20 @@
 #
 ##############################################################################
 
-from openerp import models, api, fields
+from odoo import models, api, fields
 from datetime import datetime
 from datetime import timedelta
 from dateutil.rrule import *
-import openerp.addons.decimal_precision as dp
+import odoo.addons.decimal_precision as dp
 
 
 class ProjectTaskType(models.Model):
     _inherit = 'project.task.type'
-    poc = fields.Float('% Completed')
+
+    poc = fields.Float(string='% Completed', default=0.0)
 
 
 class Project(models.Model):
-    
     _inherit = "project.project"
 
     @staticmethod
@@ -134,18 +133,16 @@ class Project(models.Model):
         if min_date_start == 0:
             datetime_start = datetime.today()
         else:
-            datetime_start = datetime.strptime(min_date_start,
-                                               "%Y-%m-%d %H:%M:%S")
+            datetime_start = min_date_start
 
-        cr.execute("""SELECT MAX(date_end)
+        cr.execute("""SELECT MAX(date_deadline)
                    FROM project_task
                    WHERE project_id=%s""", (project.id, ))
         max_date_end = cr.fetchone()[0] or 0
         if max_date_end == 0:
             datetime_end = datetime.today()
         else:
-            datetime_end = datetime.strptime(max_date_end,
-                                             "%Y-%m-%d %H:%M:%S")
+            datetime_end = max_date_end
 
         cr.execute("""SELECT MAX(date_last_stage_update)
                    FROM project_task
@@ -154,8 +151,7 @@ class Project(models.Model):
         if max_date_end_2 == 0:
             datetime_end_2 = datetime.today()
         else:
-            datetime_end_2 = datetime.strptime(max_date_end,
-                                             "%Y-%m-%d %H:%M:%S")
+            datetime_end_2 = max_date_end
         datetime_end = max(datetime_end, datetime_end_2)
 
         return datetime_start, datetime_end
@@ -164,20 +160,10 @@ class Project(models.Model):
         cr = self.env.cr
         # Compute the Budget at Completion
         cr.execute("""
-        SELECT SUM(PT.planned_hours * ip.value_float)
+        SELECT SUM(PT.planned_hours * EMP.timesheet_cost)
         FROM project_task as PT
-        INNER JOIN resource_resource RES
-        ON RES.user_id = PT.user_id
         INNER JOIN hr_employee EMP
-        ON EMP.resource_id = RES.id
-        INNER JOIN product_product PR
-        ON PR.id = EMP.product_id
-        INNER JOIN product_template PRT
-        ON PRT.id = PR.product_tmpl_id
-        LEFT JOIN ir_property ip
-        ON (ip.name='standard_price'
-        AND ip.res_id=CONCAT('product.template,',PRT.id)
-        AND ip.company_id=PT.company_id)
+        ON EMP.user_id = PT.user_id
         WHERE PT.project_id = %s""", (self.id, ))
         res = cr.fetchone()
         if res:
@@ -185,54 +171,17 @@ class Project(models.Model):
         else:
             return 0.0
 
-    def _get_plan_cost_to_date(self):
+    def _get_planed_value_to_date(self):
         cr = self.env.cr
         today = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         # Compute the Budget at Completion
         cr.execute("""
-        SELECT SUM(PT.planned_hours * ip.value_float)
+        SELECT SUM(PT.planned_hours * EMP.timesheet_cost)
         FROM project_task as PT
-        INNER JOIN resource_resource RES
-        ON RES.user_id = PT.user_id
         INNER JOIN hr_employee EMP
-        ON EMP.resource_id = RES.id
-        INNER JOIN product_product PR
-        ON PR.id = EMP.product_id
-        INNER JOIN product_template PRT
-        ON PRT.id = PR.product_tmpl_id
-        LEFT JOIN ir_property ip
-        ON (ip.name='standard_price'
-        AND ip.res_id=CONCAT('product.template,',PRT.id)
-        AND ip.company_id=PT.company_id)
+        ON EMP.user_id = PT.user_id
         WHERE PT.project_id = %s
-        AND PT.date_end <= %s""", (self.id, today))
-        res = cr.fetchone()
-        if res:
-            return res[0] or 0.0
-        else:
-            return 0.0
-
-    def _get_actual_cost_to_date(self):
-        cr = self.env.cr
-        # Compute the actual cost
-        cr.execute("""
-        SELECT SUM(PTW.hours * ip.value_float)
-        FROM project_task_work AS PTW
-        INNER JOIN project_task AS PT
-        ON PTW.task_id = PT.id
-        INNER JOIN resource_resource RES
-        ON RES.user_id = PT.user_id
-        INNER JOIN hr_employee EMP
-        ON EMP.resource_id = RES.id
-        INNER JOIN product_product PR
-        ON PR.id = EMP.product_id
-        INNER JOIN product_template PRT
-        ON PRT.id = PR.product_tmpl_id
-        LEFT JOIN ir_property ip
-        ON (ip.name='standard_price'
-        AND ip.res_id=CONCAT('product.template,',PRT.id)
-        AND ip.company_id=PT.company_id)
-        WHERE PT.project_id = %s""", (self.id, ))
+        AND PT.date_deadline <= %s""", (self.id, today))
         res = cr.fetchone()
         if res:
             return res[0] or 0.0
@@ -243,22 +192,29 @@ class Project(models.Model):
         cr = self.env.cr
         # Compute the earned value
         cr.execute("""
-        SELECT SUM(PT.planned_hours * ip.value_float * PTT.poc/100)
+        SELECT SUM(PT.planned_hours * EMP.timesheet_cost * PTT.poc/100)
         FROM project_task as PT
         INNER JOIN project_task_type as PTT
         ON PTT.id = PT.stage_id
-        INNER JOIN resource_resource RES
-        ON RES.user_id = PT.user_id
         INNER JOIN hr_employee EMP
-        ON EMP.resource_id = RES.id
-        INNER JOIN product_product PR
-        ON PR.id = EMP.product_id
-        INNER JOIN product_template PRT
-        ON PRT.id = PR.product_tmpl_id
-        LEFT JOIN ir_property ip
-        ON (ip.name='standard_price'
-        AND ip.res_id=CONCAT('product.template,',PRT.id)
-        AND ip.company_id=PT.company_id)
+        ON EMP.user_id = PT.user_id
+        WHERE PT.project_id = %s""", (self.id, ))
+        res = cr.fetchone()
+        if res:
+            return res[0] or 0.0
+        else:
+            return 0.0
+
+    def _get_actual_cost_to_date(self):
+        cr = self.env.cr
+        # Compute the actual cost
+        cr.execute("""
+        SELECT SUM(EMP.timesheet_cost * AAL.unit_amount)
+        FROM project_task AS PT
+        INNER JOIN account_analytic_line AS AAL
+        ON AAL.task_id = PT.id
+        INNER JOIN hr_employee EMP
+        ON EMP.id = AAL.employee_id
         WHERE PT.project_id = %s""", (self.id, ))
         res = cr.fetchone()
         if res:
@@ -271,14 +227,14 @@ class Project(models.Model):
         # Compute the Budget at Completion
         bac = self._get_budget_at_completion()
         # Compute Planned Value
-        pv = self._get_plan_cost_to_date()
+        pv = self._get_planed_value_to_date()
         # Compute Actual Cost
         ac = self._get_actual_cost_to_date()
         # Compute Earned Value
         ev = self._get_earned_value_to_date()
 
         ratios = self._get_evm_ratios(ac, pv, ev, bac)
-        for key in ratios.keys():
+        for key in list(ratios.keys()):
             self[key] = ratios[key]
 
     pv = fields.Float(compute='_earned_value',
@@ -428,39 +384,36 @@ class Project(models.Model):
             time_start = datetime.strptime('00:00:00', '%H:%M:%S').time()
             time_end = datetime.strptime('23:59:59', '%H:%M:%S').time()
 
-            datetime_start = datetime.combine(day_date,time_start)
-            datetime_end = datetime.combine(day_date,time_end)
+            datetime_start = datetime.combine(day_date, time_start)
+            datetime_end = datetime.combine(day_date, time_end)
 
-            cr.execute('''SELECT PTW.user_id, sum(PTW.hours)
-                       FROM project_task_work AS PTW
+            cr.execute('''SELECT AAL.employee_id, sum(AAL.unit_amount)
+                       FROM account_analytic_line AS AAL
                        LEFT JOIN project_task as PT
-                       ON (PTW.task_id=PT.id)
+                       ON (AAL.task_id=PT.id)
                        WHERE PT.project_id=%s
-                       AND PTW.date BETWEEN %s AND %s
-                       GROUP BY PTW.user_id''',
+                       AND AAL.date BETWEEN %s AND %s
+                       GROUP BY AAL.employee_id''',
                        (project.id, datetime_start,
                         datetime_end))
-            for user_id, hours_worked in cr.fetchall():
-                employee_cost = employee_obj.get_employee_cost(user_id)
+            for employee_id, hours_worked in cr.fetchall():
+                employee_cost = employee_obj.browse(employee_id).timesheet_cost
                 ac += employee_cost * hours_worked
 
             for project_task in project_tasks:
                 # Record earned value according to % completed
-                datetime_stage = datetime.strptime(
-                    project_task.date_last_stage_update,
-                    "%Y-%m-%d %H:%M:%S")
-                date_done = datetime_stage.date()
-                if date_done == day_date:
-                    ev += user_cost.get(project_task.user_id.id, 0.0) * \
-                          project_task.planned_hours * \
-                          project_task.stage_id.poc / 100
+                if project_task.date_end:
+                    datetime_stage = project_task.date_end
+                    date_done = datetime_stage.date()
+                    if date_done == day_date:
+                        ev += user_cost.get(project_task.user_id.id, 0.0) * \
+                              project_task.planned_hours * \
+                              project_task.stage_id.poc / 100
 
                 # If task is planned to complete on this date then
                 # record planned value
-                if project_task.date_end:
-                    task_end_dt = datetime.strptime(
-                        project_task.date_end, "%Y-%m-%d %H:%M:%S")
-                    date_end = task_end_dt.date()
+                if project_task.date_deadline:
+                    date_end = project_task.date_deadline
                 else:
                     date_end = False
 
@@ -476,7 +429,7 @@ class Project(models.Model):
     def create_evm_record(self, eval_date, ratios):
         records = []
         project_evm_obj = self.env['project.evm.task']
-        for kpi_type in ratios.keys():
+        for kpi_type in list(ratios.keys()):
             vals_lines = {'name': '',
                           'date': eval_date,
                           'eval_date': eval_date,
