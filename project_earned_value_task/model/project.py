@@ -20,6 +20,7 @@
 
 from odoo import models, api, fields
 from datetime import datetime
+import datetime as dt
 from datetime import timedelta
 from dateutil.rrule import *
 import odoo.addons.decimal_precision as dp
@@ -152,6 +153,10 @@ class Project(models.Model):
             datetime_end_2 = datetime.today()
         else:
             datetime_end_2 = max_date_end
+        if isinstance(datetime_end, dt.date):
+            datetime_end = datetime.combine(datetime_end, datetime.min.time())
+        if isinstance(datetime_end_2, dt.date):
+            datetime_end_2 = datetime.combine(datetime_end_2, datetime.min.time())
         datetime_end = max(datetime_end, datetime_end_2)
 
         return datetime_start, datetime_end
