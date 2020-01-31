@@ -1,22 +1,5 @@
-##############################################################################
-#
-#    Copyright (C) 2015 Eficent (<http://www.eficent.com/>)
-#              <contact@eficent.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+# Copyright 2020 ForgeFlow S.L. (https://www.forgeflow.com)
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl.html)
 
 from odoo import models, api, fields
 from datetime import datetime
@@ -163,6 +146,9 @@ class Project(models.Model):
 
     def _get_budget_at_completion(self):
         cr = self.env.cr
+        today = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        labor_planned = 0.0
+        material_planned = 0.0
         # Compute the Budget at Completion
         cr.execute("""
         SELECT SUM(PT.planned_hours * EMP.timesheet_cost)
@@ -170,15 +156,29 @@ class Project(models.Model):
         INNER JOIN hr_employee EMP
         ON EMP.user_id = PT.user_id
         WHERE PT.project_id = %s""", (self.id, ))
+        res = cr.fetchone()        
+        if res:
+            labor_planned = res[0] or 0.0
+        # Compute the Budget at Completion
+        cr.execute("""
+        WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
+        FROM analytic_resource_plan_line as RPL
+        INNER JOIN project_task PT
+        ON PT.analytic_account_id = RPL.account_id
+        WHERE PT.project_id = %s)
+        SELECT SUM(bq.ua*bq.pu)
+        FROM BASE_QUERY as bq
+        """, (self.id, ))
         res = cr.fetchone()
         if res:
-            return res[0] or 0.0
-        else:
-            return 0.0
+            material_planned = res[0] or 0.0
+        return labor_planned + material_planned
 
-    def _get_planed_value_to_date(self):
+    def _get_planned_value_to_date(self):
         cr = self.env.cr
         today = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        labor_planned = 0.0
+        material_planned = 0.0
         # Compute the Budget at Completion
         cr.execute("""
         SELECT SUM(PT.planned_hours * EMP.timesheet_cost)
@@ -187,14 +187,30 @@ class Project(models.Model):
         ON EMP.user_id = PT.user_id
         WHERE PT.project_id = %s
         AND PT.date_deadline <= %s""", (self.id, today))
+        res = cr.fetchone()        
+        if res:
+            labor_planned = res[0] or 0.0
+        # Compute the Budget at Completion
+        cr.execute("""
+        WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
+        FROM analytic_resource_plan_line as RPL
+        INNER JOIN project_task PT
+        ON PT.analytic_account_id = RPL.account_id
+        WHERE PT.project_id = %s
+        AND RPL.date <= %s)
+        SELECT SUM(bq.ua*bq.pu)
+        FROM BASE_QUERY as bq
+        """, (self.id, today))
         res = cr.fetchone()
         if res:
-            return res[0] or 0.0
-        else:
-            return 0.0
+            material_planned = res[0] or 0.0
+        return labor_planned + material_planned
+        
 
     def _get_earned_value_to_date(self):
         cr = self.env.cr
+        labor_earned = 0.0
+        material_earned = 0.0
         # Compute the earned value
         cr.execute("""
         SELECT SUM(PT.planned_hours * EMP.timesheet_cost * PTT.poc/100)
@@ -204,14 +220,31 @@ class Project(models.Model):
         INNER JOIN hr_employee EMP
         ON EMP.user_id = PT.user_id
         WHERE PT.project_id = %s""", (self.id, ))
+        res = cr.fetchone()        
+        if res:
+            labor_earned = res[0] or 0.0
+
+        # Material Earned revenue based on poc
+        cr.execute("""
+        WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu, PTT.poc as poc
+        FROM analytic_resource_plan_line as RPL
+        INNER JOIN project_task PT
+        ON PT.analytic_account_id = RPL.account_id
+        INNER JOIN project_task_type as PTT
+        ON PTT.id = PT.stage_id
+        WHERE PT.project_id = %s)
+        SELECT SUM(bq.ua*bq.pu*bq.poc/100)
+        FROM BASE_QUERY as bq
+        """, (self.id, ))
         res = cr.fetchone()
         if res:
-            return res[0] or 0.0
-        else:
-            return 0.0
+            material_earned = res[0] or 0.0
+        return labor_earned + material_earned
 
     def _get_actual_cost_to_date(self):
         cr = self.env.cr
+        labor_cost = 0.0
+        material_cost = 0.0
         # Compute the actual cost
         cr.execute("""
         SELECT SUM(EMP.timesheet_cost * AAL.unit_amount)
@@ -221,18 +254,31 @@ class Project(models.Model):
         INNER JOIN hr_employee EMP
         ON EMP.id = AAL.employee_id
         WHERE PT.project_id = %s""", (self.id, ))
+        res = cr.fetchone()        
+        if res:
+            labor_cost = res[0] or 0.0
+        # Compute the actual material cost
+        cr.execute("""
+        WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
+        FROM analytic_resource_plan_line as RPL
+        INNER JOIN project_task PT
+        ON PT.analytic_account_id = RPL.account_id
+        WHERE PT.project_id = %s
+        AND (RPL.planned_order_id is null AND RPL.state='confirm'))
+        SELECT SUM(bq.ua*bq.pu)
+        FROM BASE_QUERY as bq
+        """, (self.id, ))
         res = cr.fetchone()
         if res:
-            return res[0] or 0.0
-        else:
-            return 0.0
+            material_cost = res[0] or 0.0
+        return labor_cost + material_cost
 
     @api.one
     def _earned_value(self):
         # Compute the Budget at Completion
         bac = self._get_budget_at_completion()
         # Compute Planned Value
-        pv = self._get_planed_value_to_date()
+        pv = self._get_planned_value_to_date()
         # Compute Actual Cost
         ac = self._get_actual_cost_to_date()
         # Compute Earned Value
@@ -244,102 +290,102 @@ class Project(models.Model):
 
     pv = fields.Float(compute='_earned_value',
                       string='PV',
-                      digits_compute=dp.get_precision('Account'),
+                      digits=dp.get_precision('Account'),
                       help="""Planned Value (PV) or Budgeted Cost of Work
                       Scheduled is the total cost of the work
                       scheduled/planned as of a reporting date.""")
     ev = fields.Float(compute='_earned_value',
                       string='EV',
-                      digits_compute=dp.get_precision('Account'),
+                      digits=dp.get_precision('Account'),
                       help="""Earned Value (PV) or Budgeted Cost of Work
                       Performed is the amount of work that has been
                       completed to date, expressed as the planned value for
                       that work.""")
     ac = fields.Float(compute='_earned_value',
                       string='AC',
-                      digits_compute=dp.get_precision('Account'),
+                      digits=dp.get_precision('Account'),
                       help="""Actual Cost (AC) or Actual Cost of Work
                       Performed is an indication of the level of resources
                       that have been expended to achieve the actual work
                       performed to date.""")
     cv = fields.Float(compute='_earned_value',
                       string='CV',
-                      digits_compute=dp.get_precision('Account'),
+                      digits=dp.get_precision('Account'),
                       help="""Cost Variance (CV) shows whether a project is
                       under or over budget. It is determined as EV - AC. A
                       negative value indicates that the project is over
                       budget.""")
     cvp = fields.Float(compute='_earned_value',
                        string='CVP',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Cost Variance % (CVP) shows whether a project
                        is under or over budget. It is determined as CV / EV.
                        A negative value indicates that the project is over
                        budget.""")
     cpi = fields.Float(compute='_earned_value',
                        string='CPI',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Cost Performance Index (CPI) indicates how
                        efficiently the team is using its resources. It is
                        determined as EV / AC. A value of 0.8 indicates that
                        the project has a cost efficiency that provides 0.8
                        worth of work for every unit spent to date.""")
     tcpi = fields.Float(compute='_earned_value', string='TCPI',
-                        digits_compute=dp.get_precision('Account'),
+                        digits=dp.get_precision('Account'),
                         help="""To-Complete Cost Performance Index (TCPI)
                         helps the team determine the efficiency that must be
                         achieved on the remaining work for a project to meet
                         the Budget at Completion (BAC). It is determined as
                         (BAC - EV) / (BAC - AC)""")
     sv = fields.Float(compute='_earned_value', string='SV',
-                      digits_compute=dp.get_precision('Account'),
+                      digits=dp.get_precision('Account'),
                       help="""Schedule Variance (SV) determines whether a
                       project is ahead or behind schedule. It is calculated
                       as EV - PV. A negative value indicates an unfavorable
                       condition.""")
     svp = fields.Float(compute='_earned_value', string='SVP',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Schedule Variance % (SVP) determines whether
                        a project is ahead or behind schedule. It is
                        calculated as SV / PV. A negative value indicates
                        what percent of the planned work has not been
                        accomplished""")
     spi = fields.Float(compute='_earned_value', string='SPI',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Schedule Performance Index (SPI) indicates
                        how efficiently the project team is using its time.
                        It is calculated as EV / PV. For example, on a day,
                        indicates how many hours worth of the planned work
                        is being performed.""")
     eac = fields.Float(compute='_earned_value', string='EAC',
-                          digits_compute=dp.get_precision('Account'),
+                          digits=dp.get_precision('Account'),
                           help="""Estimate at Completion (EAC) provides
                           an estimate of the final cost of the project if
                           current performance trends continue. It is
                           calculated as BAC / CPI.""")
     etc = fields.Float(compute='_earned_value', string='ETC',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Estimate to Complete (ETC) provides an
                        estimate of what will the remaining work cost. It is
                        calculated as (BAC - EV) / CPI.""")
     vac = fields.Float(compute='_earned_value', string='VAC',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="""Variance at Completion (VAC) shows the team
                        whether the project will finish under or over budget.
                        It is calculated as BAC - EAC.""")
     vacp = fields.Float(compute='_earned_value', string='VACP',
-                        digits_compute=dp.get_precision('Account'),
+                        digits=dp.get_precision('Account'),
                         help="""Variance at Completion % (VACP) shows the
                         team whether the project will finish under or over
                         budget. It is calculated as VAC / BAC.""")
     bac = fields.Float(compute='_earned_value', string='BAC',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="Budget at Completion (BAC)")
     pcc = fields.Float(compute='_earned_value', string='PCC',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="Costs to date / Total costs")
     poc = fields.Float(compute='_earned_value', string='POC',
-                       digits_compute=dp.get_precision('Account'),
+                       digits=dp.get_precision('Account'),
                        help="Aggregated Percent of Completion")
 
     def update_project_evm(self):
@@ -405,6 +451,22 @@ class Project(models.Model):
                 employee_cost = employee_obj.browse(employee_id).timesheet_cost
                 ac += employee_cost * hours_worked
 
+            # Compute the actual material cost
+            cr.execute("""
+            WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
+            FROM analytic_resource_plan_line as RPL
+            INNER JOIN project_task PT
+            ON PT.analytic_account_id = RPL.account_id
+            WHERE PT.project_id = %s
+            AND RPL.date BETWEEN %s AND %s
+            AND (RPL.planned_order_id is null AND RPL.state='confirm'))
+            SELECT SUM(bq.ua*bq.pu)            
+            FROM BASE_QUERY as bq
+            """, (project.id, datetime_start, datetime_end))
+            mac = cr.fetchone()
+            if mac:
+                ac += mac[0] or 0.0
+
             for project_task in project_tasks:
                 # Record earned value according to % completed
                 if project_task.date_end:
@@ -425,6 +487,39 @@ class Project(models.Model):
                 if date_end == day_date:
                     pv += user_cost.get(project_task.user_id.id, 0.0) * \
                           project_task.planned_hours
+
+            cr.execute("""
+            WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
+            FROM analytic_resource_plan_line as RPL
+            INNER JOIN project_task PT
+            ON PT.analytic_account_id = RPL.account_id
+            WHERE PT.project_id = %s
+            AND RPL.date BETWEEN %s AND %s)
+            SELECT SUM(bq.ua*bq.pu)
+            FROM BASE_QUERY as bq
+            """, (project.id, datetime_start,
+                        datetime_end))
+            mpv = cr.fetchone()
+            if mpv:
+                pv += mpv[0] or 0.0
+
+            cr.execute("""
+            WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu, PTT.poc as poc
+            FROM analytic_resource_plan_line as RPL
+            INNER JOIN project_task PT
+            ON PT.analytic_account_id = RPL.account_id
+            INNER JOIN project_task_type as PTT
+            ON PTT.id = PT.stage_id
+            WHERE PT.project_id = %s
+            AND RPL.date BETWEEN %s AND %s)
+            SELECT SUM(bq.ua*bq.pu*bq.poc/100)
+            FROM BASE_QUERY as bq
+            """, (project.id, datetime_start,
+                        datetime_end))
+            mev = cr.fetchone()
+            if mev:
+                ev += mev[0] or 0.0
+
 
             ratios = self._get_evm_ratios(ac, pv, ev, bac)
             # Create the EVM records
