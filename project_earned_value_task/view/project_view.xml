@@ -37,6 +37,8 @@
                             <field name="pv" string="Planned Value (PV)"/>
                             <field name="ev" string="Earned Value (EV)"/>
                             <field name="ac" string="Actual Cost (AC)"/>
+                            <field name="amc" string="Actual Material Cost (AM)"/>
+                            <field name="alc" string="Actual Labor Cost (AL)"/>
                         </group>
                         <group name="schedule" string="Schedule analysis">
                             <field name="sv" string="Schedule Variance (SV)"/>

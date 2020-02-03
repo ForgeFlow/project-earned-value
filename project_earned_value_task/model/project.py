@@ -19,10 +19,12 @@ class Project(models.Model):
     _inherit = "project.project"
 
     @staticmethod
-    def _get_evm_ratios(ac, pv, ev, bac):
+    def _get_evm_ratios(ac, pv, ev, bac, amc, alc):
 
         res = {
             'ac': ac,
+            'amc': amc,
+            'alc': alc,
             'pv': pv,
             'ev': ev,
             'bac': bac,
@@ -160,6 +162,7 @@ class Project(models.Model):
         if res:
             labor_planned = res[0] or 0.0
         # Compute the Budget at Completion
+        # Todo: do not force to include RPL in the task
         cr.execute("""
         WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
         FROM analytic_resource_plan_line as RPL
@@ -253,7 +256,10 @@ class Project(models.Model):
         ON AAL.task_id = PT.id
         INNER JOIN hr_employee EMP
         ON EMP.id = AAL.employee_id
-        WHERE PT.project_id = %s""", (self.id, ))
+        INNER JOIN account_analytic_journal AAJ
+        ON AAJ.id = AAL.journal_id
+        WHERE AAJ.name in ('labor')     
+        AND PT.project_id = %s""", (self.id, ))
         res = cr.fetchone()        
         if res:
             labor_cost = res[0] or 0.0
@@ -271,7 +277,7 @@ class Project(models.Model):
         res = cr.fetchone()
         if res:
             material_cost = res[0] or 0.0
-        return labor_cost + material_cost
+        return labor_cost + material_cost, material_cost, labor_cost
 
     @api.one
     def _earned_value(self):
@@ -280,11 +286,11 @@ class Project(models.Model):
         # Compute Planned Value
         pv = self._get_planned_value_to_date()
         # Compute Actual Cost
-        ac = self._get_actual_cost_to_date()
-        # Compute Earned Value
+        ac,amc,alc = self._get_actual_cost_to_date()
+        # Compute Earned ValueValue
         ev = self._get_earned_value_to_date()
 
-        ratios = self._get_evm_ratios(ac, pv, ev, bac)
+        ratios = self._get_evm_ratios(ac, pv, ev, bac, amc, alc)
         for key in list(ratios.keys()):
             self[key] = ratios[key]
 
@@ -308,6 +314,27 @@ class Project(models.Model):
                       Performed is an indication of the level of resources
                       that have been expended to achieve the actual work
                       performed to date.""")
+    amc = fields.Float(compute='_earned_value',
+                      string='AMC',
+                      digits=dp.get_precision('Account'),
+                      help="""Actual Material Cost (AMC) or Actual Cost of Work
+                      Performed is an indication of the level of resources
+                      that have been expended to achieve the actual work
+                      performed to date.""")
+    alc = fields.Float(compute='_earned_value',
+                      string='ALC',
+                      digits=dp.get_precision('Account'),
+                      help="""Actual Labor Cost (ALC) or Actual Cost of Work
+                      Performed is an indication of the level of resources
+                      that have been expended to achieve the actual work
+                      performed to date.""")                      
+    avc = fields.Float(compute='_earned_value',
+                      string='AVC',
+                      digits=dp.get_precision('Account'),
+                      help="""Actual Material Cost (AVC) or Actual Cost of Work
+                      Performed is an indication of the level of resources
+                      that have been expended to achieve the actual work
+                      performed to date.""")                                         
     cv = fields.Float(compute='_earned_value',
                       string='CV',
                       digits=dp.get_precision('Account'),
@@ -424,12 +451,14 @@ class Project(models.Model):
         ev = 0.0
         # Actual cost
         ac = 0.0
-
+        amc = 0.0
+        alc = 0.0        
         # Budget at Completion
         bac = self._get_budget_at_completion()
 
         records = []
         for day_datetime in l_days:
+            mpv = 0.0
             day_date = day_datetime.date()
             # Actual work completed today for tasks in this project
             time_start = datetime.strptime('00:00:00', '%H:%M:%S').time()
@@ -449,8 +478,7 @@ class Project(models.Model):
                         datetime_end))
             for employee_id, hours_worked in cr.fetchall():
                 employee_cost = employee_obj.browse(employee_id).timesheet_cost
-                ac += employee_cost * hours_worked
-
+                alc += employee_cost * hours_worked            
             # Compute the actual material cost
             cr.execute("""
             WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu
@@ -463,10 +491,11 @@ class Project(models.Model):
             SELECT SUM(bq.ua*bq.pu)            
             FROM BASE_QUERY as bq
             """, (project.id, datetime_start, datetime_end))
-            mac = cr.fetchone()
-            if mac:
-                ac += mac[0] or 0.0
-
+            amci = cr.fetchone()
+            if amci:
+                amci = amci[0] or 0.0
+                amc += amci
+            ac = alc + amc
             for project_task in project_tasks:
                 # Record earned value according to % completed
                 if project_task.date_end:
@@ -499,9 +528,11 @@ class Project(models.Model):
             FROM BASE_QUERY as bq
             """, (project.id, datetime_start,
                         datetime_end))
-            mpv = cr.fetchone()
-            if mpv:
-                pv += mpv[0] or 0.0
+            mpvi = cr.fetchone()
+            if mpvi:
+                mpvi = mpvi[0] or 0.0
+                mpv += mpvi
+            pv += mpv
 
             cr.execute("""
             WITH BASE_QUERY AS (SELECT DISTINCT RPL.id, RPL.unit_amount as ua, RPL.price_unit as pu, PTT.poc as poc
@@ -521,7 +552,7 @@ class Project(models.Model):
                 ev += mev[0] or 0.0
 
 
-            ratios = self._get_evm_ratios(ac, pv, ev, bac)
+            ratios = self._get_evm_ratios(ac, pv, ev, bac, amc, alc)
             # Create the EVM records
             records.extend(project.create_evm_record(day_date, ratios))
         return records

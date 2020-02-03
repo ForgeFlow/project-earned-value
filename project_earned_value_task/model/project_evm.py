@@ -6,6 +6,8 @@ from odoo import fields, models
 _KPI_TYPE = [('PV', 'Planned Value'),
              ('EV', 'Earned Value'),
              ('AC', 'Actual Cost'),
+             ('AMC', 'Actual Material Cost'),
+             ('ALC', 'Actual Labor Cost'),
              ('CV', 'Cost Variance'),
              ('CVP', 'Cost Variance Percent'),
              ('CPI', 'Cost Performance Index'),
