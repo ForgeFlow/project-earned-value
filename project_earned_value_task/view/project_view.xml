@@ -56,9 +56,6 @@
                             <field name="etc" string="Estimate to Complete (ETC)"/>
                         </group>
                     </page>
-                    <page string="Project Stages" name="project_stages">
-                         <field name="type_ids"/>
-                    </page>
                 </notebook>
             </field>
         </record>
